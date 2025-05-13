@@ -1,0 +1,15 @@
+diff --git a/init/main.c b/init/main.c
+index 02f6b6bd6a17..10e6fc328466 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -1109,6 +1109,10 @@ static int __ref kernel_init(void *unused)
+        system_state = SYSTEM_RUNNING;
+        numa_default_policy();
+
++        printk(KERN_EMERG "\n");
++        printk(KEREN_EMERG "##### Aarithi Rajendren (UFID: 0000-0000) Glad to be in OS Class #####");
++        printk(KERN_EMERG "\n");
++
+        rcu_end_inkernel_boot();
+
+        if (ramdisk_execute_command) {
