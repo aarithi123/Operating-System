@@ -1,0 +1,130 @@
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index bbfc6d440870..f7ae313170ba 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -345,6 +345,9 @@
+ 334	common	rseq			__x64_sys_rseq
+ 424	common	pidfd_send_signal	__x64_sys_pidfd_send_signal
+ 434	common	pidfd_open		__x64_sys_pidfd_open
++435     common  get_proc_log_level      __x64_sys_get_proc_log_level
++436     common  set_proc_log_level      __x64_sys_set_proc_log_level
++437     common  proc_log_message        __x64_sys_proc_log_message
+ 
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 8e5b2c6d5dea..46e77adb113c 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -435,6 +435,10 @@ asmlinkage long sys_quotactl(unsigned int cmd, const char __user *special,
+ asmlinkage long sys_getdents64(unsigned int fd,
+ 				struct linux_dirent64 __user *dirent,
+ 				unsigned int count);
++/* proc_log_message */
++asmlinkage long __x64_sys_get_proc_log_level(void);
++asmlinkage long __x64_sys_set_proc_log_level(int new_level);
++asmlinkage long __x64_sys_proc_log_message(char *message, int level);
+ 
+ /* fs/read_write.c */
+ asmlinkage long sys_llseek(unsigned int fd, unsigned long offset_high,
+diff --git a/kernel/sys.c b/kernel/sys.c
+index 0a1cdee858de..9a731bf65d80 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -135,6 +135,9 @@
+  * architectures that now have 32-bit UID/GID but didn't in the past
+  */
+ 
++// kernel-wide process log level. Initialize it to 0.
++int proc_log_level = 0;
++
+ int overflowuid = DEFAULT_OVERFLOWUID;
+ int overflowgid = DEFAULT_OVERFLOWGID;
+ 
+@@ -2807,3 +2810,86 @@ COMPAT_SYSCALL_DEFINE1(sysinfo, struct compat_sysinfo __user *, info)
+ 	return 0;
+ }
+ #endif /* CONFIG_COMPAT */
++
++// Add function definition
++SYSCALL_DEFINE0(get_proc_log_level) {
++        return proc_log_level;
++}
++
++SYSCALL_DEFINE1(set_proc_log_level, int, new_level) {
++        // check if  user is a superuser. If not, permission denied to set proc_log_level
++        if (!capable(CAP_SYS_ADMIN))
++            return -1;
++
++        // log level should be between 0 and 7. If not, invalid log level
++        if (new_level < 0 || new_level > 7)
++            return -1;
++
++        proc_log_level = new_level;
++        return new_level;
++}
++
++SYSCALL_DEFINE2(proc_log_message, char*, message, int, level) {
++        // log level should be between 0 and 7. If not, invalid log level
++        if (level < 0 || level > 7)
++            return -1;
++
++        // if message length exceeds 128, invalid message length
++        if (strlen(message) > 128) {
++            return -1;
++        }
++
++        // 128 + 1 for null terminator
++        char msg[129];
++        memset(msg, 0, sizeof(msg));
++        long ret = copy_from_user(msg,message,128);
++        if (ret != 0) {
++            return -1;
++        }
++
++        // null terminate the message
++        msg[128] = '\0';
++
++        // Check if the message's log level is high enough to log
++        if (level <= proc_log_level) {
++            switch (level) {
++              case 0:
++                printk(KERN_EMERG "PROC_OVERRIDE [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 1:
++                printk(KERN_ALERT "PROC_ALERT [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 2:
++                printk(KERN_CRIT "PROC_CRITICAL [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 3:
++                printk(KERN_ERR "PROC_ERROR [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 4:
++                printk(KERN_WARNING "PROC_WARNING [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 5:
++                printk(KERN_NOTICE "PROC_NOTICE [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 6:
++                printk(KERN_INFO "PROC_INFO [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              case 7:
++                printk(KERN_DEBUG "PROC_DEBUG [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++              default:
++                printk(KERN_DEFAULT "PROC_DEFAULT [%s, %d]: %s\n", current->comm, current->pid, msg);
++                break;
++            }
++            return level;
++        }
++
++        // return level if it is greater than proc_log_level
++        if (level > proc_log_level) {
++            return level;
++        }
++
++        // return -1 if level is negative
++        return -1;
++}
++

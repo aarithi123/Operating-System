@@ -1,0 +1,27 @@
+COP4600 P1 Harness Test
+Note: These tests ARE NOT COMPREHENSIVE, you should write your own tests as well to check functionality.
+
+
+Set system log level to 3 as normal user (should fail)
+Log level before change: 0
+Harness set_proc_log_level return output: -1
+Log level after change: 0
+
+Set system log level to 3 as superuser (should succeed)
+Log level before change: 0
+Harness set_proc_log_level return output: 3
+Log level after change: 3
+
+Print message with level 2 while in system log level 3 (should succeed)
+Harness proc_log_message return output: 2
+<2>[  108.290047] PROC_CRITICAL [harness_test, 4075]: Test print message. Linux Rocks!
+Did the message print?: Yes
+
+Print message with level 3 while in system log level 2 (should not print)
+Harness proc_log_message return output: 3
+Did the message print?: No
+
+Print message with level -1 while in system log level 4 (should fail)
+Harness proc_log_message return output: -1
+Did the message print?: No
+
